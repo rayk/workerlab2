@@ -10,16 +10,22 @@ abstract class PrimeInterface {
   FutureOr<Stream<int>> streamOfPrimes(int count);
 }
 
-class PrimeService implements PrimeInterface {
+class PrimeService implements PrimeInterface, WorkerService {
   @override
   Future<List<int>> getPrimeBatch(int count) {
     final cmp = Completer<List<int>>();
+    var found = 0;
+    var candidate = 0;
     final results = <int>[];
 
-    for (int i = 1; i < 1000; i++) {
-      if (isPrime(i)) results.add(i);
-      if (results.length == count) break;
+    while (found < count) {
+      candidate++;
+      if (isPrime(candidate)) {
+        found++;
+        results.add(candidate);
+      }
     }
+
     cmp.complete(results);
 
     return cmp.future;

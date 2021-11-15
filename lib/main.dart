@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:workerlab/factorial.dart';
+import 'package:squadron/squadron_pool.dart';
+import 'package:workerlab/prime_service.dart';
+import 'package:workerlab/prime_worker.dart';
+
+import 'prime_service_vm.dart' as prime_isolate;
 
 void main() async {
-  runApp(const MyApp());
+  runApp(MyApp(
+      pool: WorkerPool<PrimeWorker>(
+    () => PrimeWorker(prime_isolate.start),
+    maxWorkers: 8,
+    minWorkers: 2,
+    maxParallel: 1,
+  )));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  final WorkerPool<PrimeWorker> pool;
+  const MyApp({Key? key, required this.pool}) : super(key: key);
 
   // This widget is the root of your application.
   @override
@@ -16,15 +27,22 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(
+      home: MyHomePage(
         title: 'Flutter Demo Home Page',
+        pool: pool,
       ),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
+  final WorkerPool<PrimeWorker> pool;
+
+  const MyHomePage({
+    Key? key,
+    required this.title,
+    required this.pool,
+  }) : super(key: key);
 
   final String title;
 
@@ -35,6 +53,12 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
   int fact = 0;
+  List<int> primes = [];
+  late Duration elapsedOnWorker = Duration.zero;
+  late Duration elapsedOnMain = Duration.zero;
+  List<int> workerPrimes = [];
+
+  List<int> directPrimes = [];
 
   void _incrementCounter() {
     setState(() {
@@ -42,10 +66,28 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void _calculate() {
-    final serv = FactorialService();
-    setState(() {
-      fact = serv.calc(_counter);
+  void _calculateWorker() {
+    final sw = Stopwatch()..start();
+    widget.pool
+        .compute((worker) => worker.getPrimeBatch(10000))
+        .then((List<int> results) {
+      sw.stop();
+      elapsedOnWorker = sw.elapsed;
+      setState(() {
+        primes = results;
+      });
+    });
+  }
+
+  void _calculateDirect() {
+    final sw = Stopwatch()..start();
+    final cal = PrimeService();
+    cal.getPrimeBatch(10000).then((List<int> results) {
+      sw.stop();
+      elapsedOnMain = sw.elapsed;
+      setState(() {
+        directPrimes = results;
+      });
     });
   }
 
@@ -70,14 +112,29 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             Padding(
               padding: const EdgeInsets.all(8.0),
-              child: Text(fact.toString()),
+              child: Text(primes.length.toString()),
             ),
+            Text(
+                'Primes From Worker: ${elapsedOnWorker.inMilliseconds.toString()} ms'),
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: TextButton(
-                  onPressed: () => _calculate(),
-                  child: const Text('Calculate Factorial')),
+                  onPressed: () => _calculateWorker(),
+                  child: const Text('Generate Primes (On Worker)')),
             ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(directPrimes.length.toString()),
+            ),
+            Text(
+                'Primes On Direct: ${elapsedOnMain.inMilliseconds.toString()} ms'),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: TextButton(
+                onPressed: () => _calculateDirect(),
+                child: const Text('Generate Primes (Direct)'),
+              ),
+            )
           ],
         ),
       ),
